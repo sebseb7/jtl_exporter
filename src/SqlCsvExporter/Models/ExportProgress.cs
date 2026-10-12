@@ -3,11 +3,36 @@ namespace SqlCsvExporter.Models;
 /// <summary>Progress snapshot reported during export.</summary>
 public sealed class ExportProgress
 {
-    public string CurrentTable { get; set; } = string.Empty;
+    public string Stage { get; set; } = string.Empty;
 
-    public int CompletedTables { get; set; }
+    public int CompletedSteps { get; set; }
 
-    public int TotalTables { get; set; }
+    public int TotalSteps { get; set; }
 
-    public long RowsWrittenCurrentTable { get; set; }
+    public long RecordsWritten { get; set; }
+
+    // Backward-compatibility aliases
+    public string CurrentTable
+    {
+        get => Stage;
+        set => Stage = value;
+    }
+
+    public int CompletedTables
+    {
+        get => CompletedSteps;
+        set => CompletedSteps = value;
+    }
+
+    public int TotalTables
+    {
+        get => TotalSteps;
+        set => TotalSteps = value;
+    }
+
+    public long RowsWrittenCurrentTable
+    {
+        get => RecordsWritten;
+        set => RecordsWritten = value;
+    }
 }

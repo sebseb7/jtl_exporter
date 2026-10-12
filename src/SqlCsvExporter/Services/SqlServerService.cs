@@ -206,6 +206,64 @@ public sealed class SqlServerService
         }
     }
 
+    /// <summary>
+    /// Loads top-level categories (kOberKategorie = 0 or NULL) from dbo.tKategorie.
+    /// </summary>
+    public async Task<IReadOnlyList<CategoryInfo>> GetTopCategoriesAsync(
+        ConnectionSettings settings, string database, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(database))
+        {
+            throw new ExportException("Bitte zuerst eine Datenbank wählen.");
+        }
+
+        const string sql = """
+            SELECT
+                k.kKategorie,
+                k.kOberKategorie,
+                k.nSort,
+                COALESCE((
+                    SELECT TOP 1 ks.cName
+                    FROM dbo.tKategorieSprache ks
+                    WHERE ks.kKategorie = k.kKategorie
+                    ORDER BY ks.kSprache, ks.kPlattform, ks.kShop
+                ), '') AS cName
+            FROM dbo.tKategorie k
+            WHERE k.kOberKategorie = 0 OR k.kOberKategorie IS NULL
+            ORDER BY k.nSort, k.kKategorie;
+            """;
+
+        var connectionString = BuildConnectionString(settings, database);
+        try
+        {
+            using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync(ct).ConfigureAwait(false);
+            using var command = new SqlCommand(sql, connection)
+            {
+                CommandTimeout = Math.Clamp(settings.ConnectTimeoutSeconds, 1, 120),
+            };
+            using var cancel = ct.Register(() => { try { command.Cancel(); } catch { } });
+            using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            var result = new List<CategoryInfo>();
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
+            {
+                result.Add(new CategoryInfo
+                {
+                    KKategorie = reader.GetInt32(0),
+                    KOberKategorie = reader.IsDBNull(1) ? null : reader.GetInt32(1),
+                    NSort = reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
+                    Name = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
+                });
+            }
+
+            return result;
+        }
+        catch (Exception ex) when (ex is SqlException or InvalidOperationException or OperationCanceledException)
+        {
+            throw ToSafeException($"Kategorien in Datenbank '{database}' konnten nicht aufgelistet werden", ex);
+        }
+    }
+
     internal static ExportException ToSafeException(string context, Exception ex)
     {
         if (ex is OperationCanceledException)
