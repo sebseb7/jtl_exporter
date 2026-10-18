@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag or version to release (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.props', '**/*.targets', 'NuGet.config', 'nuget.config') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore SqlCsvExporter.slnx
+
+      - name: Test (Release)
+        run: dotnet test SqlCsvExporter.slnx -c Release --nologo
+
+      - name: Determine Version
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.event.inputs.tag_name }}"
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            $tag = "${{ github.ref_name }}"
+          }
+          $ver = $tag.TrimStart('v')
+          Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_TAG=$tag"
+          Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_VERSION=$ver"
+
+      - name: Publish (win-x64)
+        run: dotnet publish src/SqlCsvExporter/SqlCsvExporter.csproj /p:PublishProfile=win-x64 -p:Version=${{ env.RELEASE_VERSION }}
+
+      - name: Package ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path publish\win-x64\JtlMedienExporter.exe -DestinationPath publish\JtlMedienExporter-win-x64.zip -Force
+
+      - name: Upload to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = $env:RELEASE_TAG
+          $exe = "publish\win-x64\JtlMedienExporter.exe"
+          $zip = "publish\JtlMedienExporter-win-x64.zip"
+
+          $viewResult = gh release view $tag 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists. Uploading assets..."
+            gh release upload $tag $exe $zip --clobber
+          } else {
+            Write-Host "Creating release $tag and uploading assets..."
+            gh release create $tag $exe $zip --title "$tag" --generate-notes
+          }
