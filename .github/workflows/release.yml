@@ -108,7 +108,7 @@ jobs:
             Write-Host "----------------------------------------------------------------------------------"
 
             "$hash  $($file.Name)" | Out-File -FilePath publish/release-assets/checksums.txt -Append -Encoding ascii
-            $summary += "| `$($file.Name)` | $($sizeMb) MB | `$hash` |"
+            $summary += ('| `{0}` | {1} MB | `{2}` |' -f $file.Name, $sizeMb, $hash)
           }
 
           Write-Host "=================================================================================="
