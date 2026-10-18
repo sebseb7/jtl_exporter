@@ -52,13 +52,71 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_TAG=$tag"
           Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_VERSION=$ver"
 
-      - name: Publish (win-x64)
-        run: dotnet publish src/SqlCsvExporter/SqlCsvExporter.csproj /p:PublishProfile=win-x64 -p:Version=${{ env.RELEASE_VERSION }}
+      - name: Publish Self-Contained (win-x64)
+        run: >
+          dotnet publish src/SqlCsvExporter/SqlCsvExporter.csproj
+          -c Release
+          -r win-x64
+          -p:SelfContained=true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -p:DebugType=none
+          -p:Version=${{ env.RELEASE_VERSION }}
+          -o publish/selfcontained
 
-      - name: Package ZIP
+      - name: Publish Framework-Dependent (win-x64)
+        run: >
+          dotnet publish src/SqlCsvExporter/SqlCsvExporter.csproj
+          -c Release
+          -r win-x64
+          -p:SelfContained=false
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=none
+          -p:Version=${{ env.RELEASE_VERSION }}
+          -o publish/framework-dependent
+
+      - name: Stage Artifacts & Calculate SHA-256
         shell: pwsh
         run: |
-          Compress-Archive -Path publish\win-x64\JtlMedienExporter.exe -DestinationPath publish\JtlMedienExporter-win-x64.zip -Force
+          New-Item -ItemType Directory -Path publish/release-assets -Force | Out-Null
+          Copy-Item publish/selfcontained/JtlMedienExporter.exe publish/release-assets/JtlMedienExporter-selfcontained-win-x64.exe
+          Copy-Item publish/framework-dependent/JtlMedienExporter.exe publish/release-assets/JtlMedienExporter-framework-dependent-win-x64.exe
+
+          $assets = Get-ChildItem -Path publish/release-assets -Filter "*.exe"
+
+          Write-Host ""
+          Write-Host "=================================================================================="
+          Write-Host "                       RELEASE ARTIFACTS & SHA-256 CHECKSUMS                      "
+          Write-Host "=================================================================================="
+
+          $summary = @(
+            "### 🔒 Release Artifacts & SHA-256 Checksums",
+            "",
+            "| Artifact | Size | SHA-256 Checksum |",
+            "|---|---|---|"
+          )
+
+          foreach ($file in $assets) {
+            $hash = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash
+            $sizeMb = [math]::Round($file.Length / 1MB, 2)
+
+            Write-Host ("Artifact : {0}" -f $file.Name)
+            Write-Host ("Size     : {0} MB ({1:N0} bytes)" -f $sizeMb, $file.Length)
+            Write-Host ("SHA-256  : {0}" -f $hash)
+            Write-Host "----------------------------------------------------------------------------------"
+
+            "$hash  $($file.Name)" | Out-File -FilePath publish/release-assets/checksums.txt -Append -Encoding ascii
+            $summary += "| `$($file.Name)` | $($sizeMb) MB | `$hash` |"
+          }
+
+          Write-Host "=================================================================================="
+          Write-Host ""
+
+          if ($env:GITHUB_STEP_SUMMARY) {
+            $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
 
       - name: Upload to GitHub Release
         shell: pwsh
@@ -66,14 +124,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $tag = $env:RELEASE_TAG
-          $exe = "publish\win-x64\JtlMedienExporter.exe"
-          $zip = "publish\JtlMedienExporter-win-x64.zip"
+          $files = @(
+            "publish/release-assets/JtlMedienExporter-selfcontained-win-x64.exe",
+            "publish/release-assets/JtlMedienExporter-framework-dependent-win-x64.exe",
+            "publish/release-assets/checksums.txt"
+          )
 
           $viewResult = gh release view $tag 2>&1
           if ($LASTEXITCODE -eq 0) {
             Write-Host "Release $tag already exists. Uploading assets..."
-            gh release upload $tag $exe $zip --clobber
+            gh release upload $tag @files --clobber
           } else {
             Write-Host "Creating release $tag and uploading assets..."
-            gh release create $tag $exe $zip --title "$tag" --generate-notes
+            gh release create $tag @files --title "$tag" --generate-notes
           }
