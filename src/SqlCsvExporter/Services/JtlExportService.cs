@@ -313,6 +313,24 @@ public sealed class JtlExportService
             '' AS brandPictureFiles,
             '' AS pictureFiles,
             COALESCE((
+                SELECT STRING_AGG(
+                    CONCAT(
+                        REPLACE(REPLACE(COALESCE(l.cFirma, ''), ':', ' '), '|', ' '),
+                        ':',
+                        REPLACE(REPLACE(COALESCE(la.cLiefArtNr, ''), ':', ' '), '|', ' '),
+                        ':',
+                        CAST(CAST(CAST(COALESCE(la.nVPEMenge, 0) AS decimal(10, 2)) AS float) AS varchar),
+                        ':',
+                        CAST(CAST(CAST(COALESCE(la.fMwSt, 0) AS decimal(10, 2)) AS float) AS varchar),
+                        ':',
+                        CAST(CAST(COALESCE(la.fEKNetto, 0) AS decimal(10, 2)) AS varchar)
+                    ), '|'
+                ) WITHIN GROUP (ORDER BY COALESCE(la.nStandard, 0) DESC, la.kLiefArtikel ASC)
+                FROM dbo.tliefartikel la
+                LEFT JOIN dbo.tLieferant l ON l.kLieferant = la.tLieferant_kLieferant
+                WHERE la.tArtikel_kArtikel = a.kArtikel
+            ), '') AS supplieer,
+            COALESCE((
                 SELECT TOP 1 d.cBeschreibung
                 FROM dbo.tArtikelBeschreibung d
                 WHERE d.kArtikel = a.kArtikel

@@ -194,9 +194,13 @@ public sealed class JtlExportTests
         Assert.Contains("CASE WHEN a.cAktiv = 'Y' THEN 1 ELSE 0 END AS active", artQuery);
         Assert.Contains("CASE WHEN a.cLagerAktiv = 'Y' THEN 1 ELSE 0 END AS track_strock", artQuery);
         Assert.Contains("brand", artQuery);
+        Assert.Contains("AS supplieer", artQuery);
+        Assert.Contains("dbo.tliefartikel", artQuery);
+        Assert.Contains("dbo.tLieferant", artQuery);
         Assert.Contains("AS [desc]", artQuery);
+        Assert.True(artQuery.IndexOf("AS supplieer", StringComparison.Ordinal) < artQuery.IndexOf("AS [desc]", StringComparison.Ordinal));
+        Assert.True(artQuery.IndexOf("pictureFiles", StringComparison.Ordinal) < artQuery.IndexOf("AS supplieer", StringComparison.Ordinal));
         Assert.True(artQuery.IndexOf("AS [desc]", StringComparison.Ordinal) < artQuery.IndexOf("FROM dbo.tArtikel a", StringComparison.Ordinal));
-        Assert.True(artQuery.IndexOf("pictureFiles", StringComparison.Ordinal) < artQuery.IndexOf("AS [desc]", StringComparison.Ordinal));
 
         var manQuery = JtlExportService.GetManifestsQuery(scope);
         Assert.Contains("o.kAuftrag AS id", manQuery);
@@ -216,5 +220,22 @@ public sealed class JtlExportTests
         Assert.Contains("p.fVKNetto AS net", itemQuery);
         Assert.Contains("ISNULL(p.fAnzahl, 0) != 0", itemQuery);
         Assert.DoesNotContain("p.kArtikel > 0", itemQuery);
+    }
+
+    [Fact]
+    public void SupplieerColumnFormattingHandlesDelimitersAndEmptyValues()
+    {
+        var rawSupplier = "Grow In AG:109211:0:19:4.31|Naarden International s.r.o.:G201501:0:19:4.19";
+        var formatted = JtlCsvFormatter.FormatCell("supplieer", rawSupplier);
+        Assert.Equal(rawSupplier, formatted);
+
+        var emptyFormatted = JtlCsvFormatter.FormatCell("supplieer", "");
+        Assert.Equal(string.Empty, emptyFormatted);
+
+        var nullFormatted = JtlCsvFormatter.FormatCell("supplieer", null);
+        Assert.Equal(string.Empty, nullFormatted);
+
+        var csvLine = JtlCsvFormatter.CsvLine([formatted, "Beschreibung"]);
+        Assert.Equal("\"Grow In AG:109211:0:19:4.31|Naarden International s.r.o.:G201501:0:19:4.19\";\"Beschreibung\"\r\n", csvLine);
     }
 }
