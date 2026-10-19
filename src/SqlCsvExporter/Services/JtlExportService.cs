@@ -355,6 +355,12 @@ public sealed class JtlExportService
             o.cAuftragsNr AS nr,
             o.cExterneAuftragsnummer AS extnr,
             o.dErstellt AS created_at,
+            COALESCE(k.cKundenNr, '') AS customerNr,
+            COALESCE(
+                NULLIF(custAddr.cFirma, ''),
+                NULLIF(LTRIM(RTRIM(CONCAT(custAddr.cVorname, ' ', custAddr.cName))), ''),
+                ''
+            ) AS customerName,
             COALESCE((
                 SELECT STRING_AGG(t.cName, ', ')
                 FROM (
@@ -375,6 +381,8 @@ public sealed class JtlExportService
             END AS shipped
         FROM Verkauf.tAuftrag o
         INNER JOIN Verkauf.tAuftragEckdaten ae ON ae.kAuftrag = o.kAuftrag
+        LEFT JOIN dbo.tKunde k ON k.kKunde = o.kKunde
+        LEFT JOIN Verkauf.tAuftragAdresse custAddr ON custAddr.kAuftrag = o.kAuftrag AND custAddr.nTyp = 0
         LEFT JOIN dbo.tZahlungsart paymentType ON paymentType.kZahlungsart = o.kZahlungsart
         LEFT JOIN dbo.tVersandArt shippingType ON shippingType.kVersandArt = o.kVersandArt
         WHERE o.kAuftrag > @lastId

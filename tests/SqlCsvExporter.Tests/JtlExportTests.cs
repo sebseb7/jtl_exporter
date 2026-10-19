@@ -205,6 +205,13 @@ public sealed class JtlExportTests
         var manQuery = JtlExportService.GetManifestsQuery(scope);
         Assert.Contains("o.kAuftrag AS id", manQuery);
         Assert.Contains("o.cAuftragsNr AS nr", manQuery);
+        Assert.Contains("customerNr", manQuery);
+        Assert.Contains("customerName", manQuery);
+        Assert.Contains("dbo.tKunde", manQuery);
+        Assert.Contains("Verkauf.tAuftragAdresse", manQuery);
+        Assert.True(manQuery.IndexOf("created_at", StringComparison.Ordinal) < manQuery.IndexOf("customerNr", StringComparison.Ordinal));
+        Assert.True(manQuery.IndexOf("customerNr", StringComparison.Ordinal) < manQuery.IndexOf("customerName", StringComparison.Ordinal));
+        Assert.True(manQuery.IndexOf("customerName", StringComparison.Ordinal) < manQuery.IndexOf("paymentType", StringComparison.Ordinal));
         Assert.Contains("paymentType", manQuery);
         Assert.Contains("shippingType", manQuery);
         Assert.Contains("payed", manQuery);
