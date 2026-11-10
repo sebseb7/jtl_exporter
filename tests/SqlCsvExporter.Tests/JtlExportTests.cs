@@ -230,6 +230,29 @@ public sealed class JtlExportTests
     }
 
     [Fact]
+    public void CustomerQueriesUsePagingAndExpectedColumns()
+    {
+        var groupQuery = JtlExportService.GetCustomerGroupsQuery();
+        Assert.Contains("@pageSize", groupQuery);
+        Assert.Contains("@lastId", groupQuery);
+        Assert.Contains("kKundenGruppe AS id", groupQuery);
+        Assert.Contains("dbo.tKundenGruppe", groupQuery);
+        Assert.Contains("AS name", groupQuery);
+        Assert.Contains("AS discount", groupQuery);
+
+        var customerQuery = JtlExportService.GetCustomersQuery();
+        Assert.Contains("@pageSize", customerQuery);
+        Assert.Contains("@lastId", customerQuery);
+        Assert.Contains("k.kKunde AS id", customerQuery);
+        Assert.Contains("AS customerNr", customerQuery);
+        Assert.Contains("AS customergroupid", customerQuery);
+        Assert.Contains("dbo.tKunde", customerQuery);
+        Assert.Contains("dbo.tAdresse", customerQuery);
+        Assert.Contains("kInetAdresse = 0", customerQuery);
+        Assert.Contains("AS email", customerQuery);
+    }
+
+    [Fact]
     public void SupplieerColumnFormattingHandlesDelimitersAndEmptyValues()
     {
         var rawSupplier = "Grow In AG:109211:0:19:4.31|Naarden International s.r.o.:G201501:0:19:4.19";

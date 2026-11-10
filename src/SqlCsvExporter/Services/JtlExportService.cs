@@ -53,7 +53,7 @@ public sealed class JtlExportService
                 using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create, leaveOpen: false))
                 {
                     var completedSteps = 0;
-                    const int totalSteps = 8;
+                    const int totalSteps = 10;
 
                     void ReportStage(string stage)
                     {
@@ -150,7 +150,41 @@ public sealed class JtlExportService
                         ct).ConfigureAwait(false);
                     completedSteps++;
 
-                    // 6. Export images
+                    // 6. Export customergroups.csv (global, not category-scoped)
+                    ReportStage("ZIP-Eintrag: customergroups.csv");
+                    await ExportCsvTableAsync(
+                        connection,
+                        archive,
+                        "customergroups.csv",
+                        GetCustomerGroupsQuery(),
+                        options.CategoryScope,
+                        "id",
+                        _ => [],
+                        isArticleTable: false,
+                        manufacturerImageDict: null,
+                        options.RowPageSize,
+                        ReportStage,
+                        ct).ConfigureAwait(false);
+                    completedSteps++;
+
+                    // 7. Export customers.csv (global, not category-scoped)
+                    ReportStage("ZIP-Eintrag: customers.csv");
+                    await ExportCsvTableAsync(
+                        connection,
+                        archive,
+                        "customers.csv",
+                        GetCustomersQuery(),
+                        options.CategoryScope,
+                        "id",
+                        _ => [],
+                        isArticleTable: false,
+                        manufacturerImageDict: null,
+                        options.RowPageSize,
+                        ReportStage,
+                        ct).ConfigureAwait(false);
+                    completedSteps++;
+
+                    // 8. Export images
                     if (options.IncludeImages)
                     {
                         var allReferences = categoryImages.Concat(articleImages).Concat(manufacturerImages).ToList();
@@ -431,6 +465,55 @@ public sealed class JtlExportService
             )
         ORDER BY p.kAuftragPosition
         OPTION (MAXRECURSION 0)
+        """;
+
+    /// <summary>
+    /// All customer groups (global, not category-scoped).
+    /// Standard JTL-Wawi table dbo.tKundenGruppe (kKundenGruppe, cName, fRabatt).
+    /// </summary>
+    public static string GetCustomerGroupsQuery() => """
+        SELECT TOP (@pageSize)
+            kg.kKundenGruppe AS id,
+            COALESCE(kg.cName, '') AS name,
+            COALESCE(kg.fRabatt, 0) AS discount
+        FROM dbo.tKundenGruppe kg
+        WHERE kg.kKundenGruppe > @lastId
+        ORDER BY kg.kKundenGruppe
+        """;
+
+    /// <summary>
+    /// All customers with their main address (global, not category-scoped).
+    /// Mirrors customerHandlers.js: dbo.tKunde + dbo.tAdresse (kInetAdresse = 0).
+    /// OUTER APPLY TOP 1 guarantees one row per kKunde so keyset paging stays strictly increasing.
+    /// </summary>
+    public static string GetCustomersQuery() => """
+        SELECT TOP (@pageSize)
+            k.kKunde AS id,
+            COALESCE(k.cKundenNr, '') AS customerNr,
+            k.kKundenGruppe AS customergroupid,
+            k.dErstellt AS created_at,
+            COALESCE(a.cFirma, '') AS company,
+            COALESCE(a.cVorname, '') AS firstname,
+            COALESCE(a.cName, '') AS lastname,
+            COALESCE(a.cStrasse, '') AS street,
+            COALESCE(a.cPLZ, '') AS zip,
+            COALESCE(a.cOrt, '') AS city,
+            COALESCE(a.cTel, '') AS phone,
+            COALESCE(a.cMail, '') AS email,
+            COALESCE(k.cHerkunft, '') AS origin
+        FROM dbo.tKunde k
+        OUTER APPLY (
+            SELECT TOP 1
+                adr.cFirma, adr.cVorname, adr.cName, adr.cStrasse,
+                adr.cPLZ, adr.cOrt, adr.cTel, adr.cMail
+            FROM dbo.tAdresse adr
+            WHERE adr.kKunde = k.kKunde
+                AND adr.kInetAdresse = 0
+            ORDER BY adr.kAdresse
+        ) a
+        WHERE k.kKunde > @lastId
+            AND COALESCE(k.cKundenNr, '') <> N'0'
+        ORDER BY k.kKunde
         """;
 
     public static async Task<List<ImageReference>> LoadImageReferencesAsync(

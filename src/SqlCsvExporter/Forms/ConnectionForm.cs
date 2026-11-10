@@ -1,3 +1,4 @@
+using Microsoft.Win32;
 using SqlCsvExporter.Models;
 
 namespace SqlCsvExporter.Forms;
@@ -5,18 +6,14 @@ namespace SqlCsvExporter.Forms;
 /// <summary>Modal dialog collecting SQL Server connection credentials.</summary>
 public sealed class ConnectionForm : Form
 {
+    private const string RegistryPath = @"Software\JtlMedienExporter\Connection";
+
     private readonly TextBox _serverBox = new() { Text = "127.0.0.1", PlaceholderText = "z. B. meinserver oder meinserver\\SQLEXPRESS oder meinserver,1433" };
     private readonly RadioButton _winAuth = new() { Text = "Windows-Authentifizierung", AutoSize = true };
     private readonly RadioButton _sqlAuth = new() { Text = "SQL Server-Authentifizierung", Checked = true, AutoSize = true };
     private readonly TextBox _userBox = new() { Text = "sa" };
     private readonly TextBox _passwordBox = new() { UseSystemPasswordChar = true };
-    private readonly CheckBox _trustCert = new() { Text = "Serverzertifikat vertrauen (selbstsigniert, nur interne Server)", AutoSize = true };
-    private readonly Label _warning = new()
-    {
-        Text = "Verbindungen sind verschlüsselt. Nur für interne Server mit selbstsignierten Zertifikaten aktivieren.",
-        AutoSize = true,
-        ForeColor = Color.DarkRed,
-    };
+    private readonly CheckBox _trustCert = new() { Text = "Serverzertifikat vertrauen", AutoSize = true, Checked = true };
 
     public ConnectionSettings Settings { get; } = new();
 
@@ -55,18 +52,19 @@ public sealed class ConnectionForm : Form
         layout.Controls.Add(new Label { Text = "Kennwort:", AutoSize = true }, 0, 4);
         layout.Controls.Add(_passwordBox, 1, 4);
         layout.Controls.Add(_trustCert, 1, 5);
-        layout.Controls.Add(_warning, 1, 6);
 
         var buttons = new FlowLayoutPanel { FlowDirection = FlowDirection.RightToLeft, Dock = DockStyle.Fill, AutoSize = true };
         var ok = new Button { Text = "Verbinden", DialogResult = DialogResult.OK, AutoSize = true };
         var cancel = new Button { Text = "Abbrechen", DialogResult = DialogResult.Cancel, AutoSize = true };
         buttons.Controls.Add(ok);
         buttons.Controls.Add(cancel);
-        layout.Controls.Add(buttons, 1, 7);
+        layout.Controls.Add(buttons, 1, 6);
 
         Controls.Add(layout);
         AcceptButton = ok;
         CancelButton = cancel;
+
+        LoadSavedSettings();
 
         _sqlAuth.CheckedChanged += (_, _) =>
         {
@@ -90,6 +88,7 @@ public sealed class ConnectionForm : Form
             Settings.Username = _sqlAuth.Checked ? _userBox.Text.Trim() : null;
             Settings.Password = _sqlAuth.Checked ? _passwordBox.Text : null;
             Settings.TrustServerCertificate = _trustCert.Checked;
+            SaveSettings();
 
             if (_sqlAuth.Checked && string.IsNullOrWhiteSpace(Settings.Username))
             {
@@ -104,5 +103,62 @@ public sealed class ConnectionForm : Form
             // Never keep the password longer than needed in the dialog.
             _passwordBox.Text = string.Empty;
         };
+    }
+
+    private void LoadSavedSettings()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(RegistryPath);
+            if (key is null)
+            {
+                return;
+            }
+
+            var server = key.GetValue("Server") as string;
+            if (!string.IsNullOrWhiteSpace(server))
+            {
+                _serverBox.Text = server;
+            }
+
+            var useWinAuth = key.GetValue("UseWindowsAuth");
+            if (useWinAuth is int winAuthInt)
+            {
+                _winAuth.Checked = winAuthInt != 0;
+                _sqlAuth.Checked = winAuthInt == 0;
+            }
+
+            var username = key.GetValue("Username") as string;
+            if (!string.IsNullOrWhiteSpace(username))
+            {
+                _userBox.Text = username;
+            }
+
+            var trustCert = key.GetValue("TrustServerCertificate");
+            if (trustCert is int trustInt)
+            {
+                _trustCert.Checked = trustInt != 0;
+            }
+        }
+        catch
+        {
+            // Registry unavailable: fall back to defaults.
+        }
+    }
+
+    private void SaveSettings()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(RegistryPath);
+            key?.SetValue("Server", _serverBox.Text.Trim(), RegistryValueKind.String);
+            key?.SetValue("UseWindowsAuth", _winAuth.Checked ? 1 : 0, RegistryValueKind.DWord);
+            key?.SetValue("Username", _sqlAuth.Checked ? _userBox.Text.Trim() : string.Empty, RegistryValueKind.String);
+            key?.SetValue("TrustServerCertificate", _trustCert.Checked ? 1 : 0, RegistryValueKind.DWord);
+        }
+        catch
+        {
+            // Registry write failure must not block connecting.
+        }
     }
 }

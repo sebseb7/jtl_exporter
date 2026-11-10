@@ -261,9 +261,14 @@ public sealed class MainForm : Form
             _selectAllButton.Enabled = hasCategories;
             _clearButton.Enabled = hasCategories;
             _exportButton.Enabled = hasCategories;
-            SetStatus(_categories.Count == 0
-                ? $"Datenbank '{database}' enthält keine Haupt Kategorien (kOberKategorie = 0)."
-                : $"Datenbank '{database}': {_categories.Count} Kategorie(n) geladen.");
+            if (!hasCategories)
+            {
+                SetStatus("Keine Haupt-Kategorien gefunden (kOberKategorie = 0).");
+            }
+            else
+            {
+                SetStatus(string.Empty);
+            }
         }
         catch (ExportException ex)
         {
@@ -353,7 +358,7 @@ public sealed class MainForm : Form
             await Task.Run(() => _export.ExportAsync(
                 _settings, database, save.FileName, options, progress, _cts.Token));
             _progress.Value = 100;
-            SetStatus($"Fertig. Datenexport erfolgreich nach {save.FileName} geschrieben.");
+            SetStatus(string.Empty);
             MessageBox.Show(this, $"Datenexport erfolgreich abgeschlossen!\n\nDatei:\n{save.FileName}",
                 "Export abgeschlossen", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }

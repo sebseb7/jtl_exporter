@@ -1,7 +1,8 @@
 namespace SqlCsvExporter.Models;
 
 /// <summary>
-/// In-memory SQL Server connection settings. Never persisted to disk.
+/// SQL Server connection settings. Server, auth mode, username and
+/// trust-cert flag are persisted in HKCU; the password is never persisted.
 /// </summary>
 public sealed class ConnectionSettings
 {
